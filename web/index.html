@@ -1,0 +1,829 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Filmes</title>
+<style>
+  :root {
+    --bg: #f6f6f4; --fg: #1d1d1b; --muted: #6b6b66; --card: #fff; --line: #e2e2dd;
+    --accent: #2d6cdf; --ok: #1f8a4c; --warn: #b26a00; --warn-bg: #fff4e0; --err: #c0392b; --star: #f5b301;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161615; --fg: #ececea; --muted: #9a9a94; --card: #222220; --line: #33332f;
+            --accent: #6d9cff; --ok: #4cc27f; --warn: #f0b04a; --warn-bg: #3a2c12; --err: #ff6b5e; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.45 system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+  header { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px;
+           padding: 10px 16px; background: var(--bg); border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 18px; margin: 0; }
+  header a { color: inherit; text-decoration: none; }
+  nav { display: flex; gap: 4px; flex: 1; }
+  nav a { padding: 6px 12px; border-radius: 8px; color: var(--muted); }
+  nav a.on { background: var(--card); color: var(--fg); font-weight: 600; border: 1px solid var(--line); }
+  @media (max-width: 600px) { nav { order: 3; flex-basis: 100%; } header .btn { margin-left: auto; } }
+  button, .btn { font: inherit; border: 0; border-radius: 8px; padding: 8px 14px; cursor: pointer;
+                 background: var(--accent); color: #fff; text-decoration: none; display: inline-block; }
+  button.ghost, .btn.ghost { background: transparent; color: var(--fg); border: 1px solid var(--line); }
+  button.danger { background: transparent; color: var(--err); border: 1px solid var(--err); }
+  button:disabled { opacity: .5; cursor: default; }
+  [hidden] { display: none !important; }
+  .btn.busy { pointer-events: none; opacity: .7; }
+  input[type=text], input[type=search], select {
+    font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--card); color: var(--fg); min-width: 0; }
+  main { padding: 16px; max-width: 1200px; margin: 0 auto; }
+  h2 { font-size: 15px; color: var(--muted); font-weight: 600; margin: 24px 0 10px; }
+  h2::first-letter { text-transform: uppercase; }
+  .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 12px; }
+  .toolbar h2 { margin: 0; flex: 1; min-width: 200px; }
+  .note { color: var(--muted); font-size: 13px; margin: -4px 0 12px; }
+  .empty { color: var(--muted); text-align: center; padding: 60px 0; }
+  .s-ok { color: var(--ok); } .s-warn { color: var(--warn); } .s-err { color: var(--err); } .s-wait { color: var(--muted); }
+  .alert { margin: 0 0 16px; padding: 12px 14px; border-radius: 10px; background: var(--warn-bg);
+           color: var(--warn); border: 1px solid var(--warn); font-weight: 600; }
+  .alert span { display: block; font-weight: 400; font-size: 13px; }
+  #toast { position: fixed; left: 50%; top: 70px; transform: translateX(-50%); z-index: 50; display: none;
+           background: var(--fg); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 14px; }
+
+  /* Cartões: capa 16:9, porque a capa é um quadro do próprio vídeo. */
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+          color: inherit; text-decoration: none; }
+  .cover { position: relative; aspect-ratio: 16 / 9; background: var(--line) center/cover no-repeat; display: flex;
+           align-items: center; justify-content: center; color: var(--muted); font-size: 34px; }
+  .card .info { padding: 8px 10px; font-size: 13px; color: var(--muted); }
+  .card .info b { display: block; font-size: 14px; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .play { position: absolute; left: 50%; top: 50%; width: 42px; height: 42px; transform: translate(-50%, -50%);
+          border-radius: 50%; background: rgba(0,0,0,.35); border: 2px solid rgba(255,255,255,.75);
+          display: flex; align-items: center; justify-content: center; pointer-events: none; }
+  .play svg { width: 16px; height: 16px; margin-left: 3px; fill: rgba(255,255,255,.85); }
+  .badge { position: absolute; left: 6px; bottom: 6px; padding: 1px 7px; border-radius: 6px;
+           background: rgba(0,0,0,.6); color: #fff; font-size: 11px; }
+  .badge.new { background: var(--accent); }
+  .bar { height: 3px; background: rgba(255,255,255,.35); position: absolute; left: 0; right: 0; bottom: 0; }
+  .bar i { display: block; height: 100%; background: var(--accent); }
+
+  /* Tela de um filme ou série */
+  .hero { display: grid; grid-template-columns: minmax(0, 480px) 1fr; gap: 16px; align-items: start; margin-bottom: 8px; }
+  @media (max-width: 700px) { .hero { grid-template-columns: 1fr; } }
+  .hero .cover { border-radius: 10px; border: 1px solid var(--line); }
+  .hero .meta { color: var(--muted); font-size: 13px; margin: 0 0 12px; word-break: break-word; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+  .big { font-size: 16px; padding: 10px 18px; font-weight: 600; }
+  .eps { list-style: none; margin: 0; padding: 0; background: var(--card); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .eps li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  .eps li:last-child { border-bottom: 0; }
+  .eps .t { flex: 1; min-width: 0; }
+  .eps .t b { display: block; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .eps .t span { color: var(--muted); font-size: 12px; }
+  .eps li.seen .t b { color: var(--muted); }
+  .seen-btn { width: 30px; height: 30px; padding: 0; border-radius: 50%; background: transparent; color: var(--muted);
+              border: 2px solid var(--line); font-size: 14px; flex: none; }
+  .seen-btn.on { background: var(--ok); border-color: var(--ok); color: #fff; }
+  .eps button.ghost { padding: 6px 10px; }
+
+  /* Baixar */
+  .addbox { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 8px; }
+  .addbox form { display: flex; gap: 8px; }
+  .addbox form input { flex: 1; }
+  .addbox .or { margin-top: 10px; font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .addbox .or label { padding: 6px 12px; font-size: 13px; }
+  .addbox .or #dl-where { margin-left: auto; }
+  @media (max-width: 500px) { .addbox form { flex-direction: column; } }
+  .dls { display: flex; flex-direction: column; gap: 10px; }
+  .dl { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+  .dl .top { display: flex; align-items: center; gap: 8px; }
+  .dl .top b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dl .st { font-size: 13px; font-weight: 600; white-space: nowrap; }
+  .dl .prog { height: 6px; border-radius: 3px; background: var(--line); margin: 8px 0 6px; overflow: hidden; }
+  .dl .prog i { display: block; height: 100%; background: var(--accent); transition: width .5s; }
+  .dl.done .prog i { background: var(--ok); }
+  .dl.err .prog i { background: var(--err); }
+  .dl .sub { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 13px; color: var(--muted); }
+  .dl .sub .btns { margin-left: auto; display: flex; gap: 6px; }
+  .dl .sub button { padding: 4px 10px; font-size: 13px; }
+
+  /* Assistir */
+  .player { width: 100%; aspect-ratio: 16 / 9; max-height: calc(100vh - 170px); background: #000; border-radius: 10px; overflow: hidden; }
+  .player .empty { color: #bbb; padding: 40px 16px; }
+  .under { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0 6px; }
+  .under .note { flex: 1; margin: 0; min-width: 200px; }
+  .ext { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+  .ext button { padding: 5px 10px; font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1><a href="#/">Filmes</a></h1>
+  <nav>
+    <a href="#/" data-tab="filmes">Filmes</a>
+    <a href="#/baixar" data-tab="baixar">Baixar</a>
+  </nav>
+  <label class="btn" id="upload-btn" hidden>Upload<input type="file" id="upload-input" multiple
+    accept="video/*,.mkv,.mp4,.m4v,.avi,.mov,.webm" hidden></label>
+</header>
+<main>
+  <div id="content"></div>
+</main>
+<div id="toast"></div>
+
+<script src="artplayer.js"></script>
+<script>
+const $ = (s) => document.querySelector(s);
+const content = $('#content');
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+const num = (n, d = 1) => n.toLocaleString('pt-BR', { maximumFractionDigits: d });
+
+function fmtBytes(b) {
+  if (!b) return '0 B';
+  const u = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.min(u.length - 1, Math.floor(Math.log(b) / Math.log(1024)));
+  return `${num(b / 1024 ** i, i >= 3 ? 1 : 0)} ${u[i]}`;
+}
+// fmtDur escreve "1h 52min" ou "45 min".
+function fmtDur(s) {
+  if (!(s > 0)) return '';
+  const m = Math.max(1, Math.round(s / 60)), h = Math.floor(m / 60);
+  return h ? `${h}h ${String(m % 60).padStart(2, '0')}min` : `${m} min`;
+}
+function fmtEta(s) {
+  if (!(s > 0) || s >= 8640000) return '';
+  if (s < 60) return 'falta menos de 1 min';
+  if (s < 86400) return 'faltam ' + fmtDur(s);
+  return 'faltam ' + plural(Math.round(s / 86400), 'dia', 'dias');
+}
+const isNew = (it) => Date.now() - new Date(it.addedAt).getTime() < 3 * 864e5 && !it.watched;
+const thumbUrl = (it) => `/thumb/${it.id}?t=${thumbBust[it.id] || 0}`;
+const thumbBust = {};
+const baseName = (rel) => rel.split('/').pop();
+const epName = (f) => f.episode ? `T${f.season} E${f.episode}` : f.label;
+const PLAY = '<span class="play"><svg viewBox="0 0 16 16"><path d="M3 1.5v13l11-6.5z"/></svg></span>';
+
+async function api(method, url, body) {
+  const opts = { method };
+  if (body instanceof FormData) opts.body = body;
+  else if (body) { opts.headers = { 'Content-Type': 'application/json' }; opts.body = JSON.stringify(body); }
+  const r = await fetch(url, opts);
+  if (!r.ok) throw new Error((await r.text()).trim() || r.statusText);
+  return r.status === 204 || r.status === 201 ? null : r.json();
+}
+
+let toastTimer;
+function toast(msg) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (t.style.display = 'none'), 2500);
+}
+
+// ---------- VLC e outros players ----------
+// Para quem prefere tocar fora do navegador: no Android e no iPhone abrimos o app
+// do VLC direto; no computador baixamos uma playlist .m3u, que o sistema abre no VLC.
+const ua = navigator.userAgent;
+const isAndroid = /Android/i.test(ua);
+const isIOS = /iPhone|iPad|iPod/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+const streamUrl = (f) => `${location.origin}/stream/${f.id}/${encodeURIComponent(baseName(f.rel))}`;
+
+function openVLC(it, f) {
+  const url = streamUrl(f);
+  const title = it.series ? `${it.title} · ${epName(f)}` : it.title;
+  if (isAndroid) {
+    location.href = `intent://${url.replace(/^https?:\/\//, '')}#Intent;scheme=${location.protocol.slice(0, -1)};` +
+      `type=video/*;package=org.videolan.vlc;S.title=${encodeURIComponent(title)};end`;
+  } else if (isIOS) {
+    location.href = 'vlc-x-callback://x-callback-url/stream?url=' + encodeURIComponent(url);
+  } else {
+    location.href = `/playlist/${it.id}.m3u?from=${f.id}`;
+    toast('Abrindo no VLC…');
+  }
+  // Abriu para assistir: já marca como visto (dá para desmarcar na lista).
+  if (!f.watched) setWatched([f], true, true);
+}
+
+// Como no AList: além do VLC, o player que costuma ter em cada aparelho.
+function extPlayers() {
+  if (isAndroid) return [['vlc', 'VLC'], ['mx', 'MX Player']];
+  if (isIOS) return [['vlc', 'VLC'], ['infuse', 'Infuse'], ['nplayer', 'nPlayer']];
+  if (/Macintosh/.test(ua)) return [['vlc', 'VLC'], ['iina', 'IINA']];
+  if (/Windows/.test(ua)) return [['vlc', 'VLC'], ['potplayer', 'PotPlayer']];
+  return [['vlc', 'VLC']];
+}
+
+function openExternal(kind, it, f) {
+  if (art) art.pause();
+  if (kind === 'vlc') return openVLC(it, f);
+  const url = streamUrl(f), enc = encodeURIComponent(url);
+  location.href = {
+    mx: `intent:${url}#Intent;package=com.mxtech.videoplayer.ad;type=video/*;end`,
+    infuse: `infuse://x-callback-url/play?url=${enc}`,
+    nplayer: `nplayer-${url}`,
+    iina: `iina://weblink?url=${enc}`,
+    potplayer: `potplayer://${url}`,
+  }[kind];
+}
+
+async function copyLink(f) {
+  const url = streamUrl(f);
+  try {
+    await navigator.clipboard.writeText(url);
+  } catch {
+    // Sem HTTPS o navegador não deixa usar a área de transferência moderna.
+    const ta = document.createElement('textarea');
+    ta.value = url;
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    if (!ok) { prompt('Copie o link:', url); return; }
+  }
+  toast('Link copiado. No VLC: Mídia › Abrir fluxo de rede.');
+}
+
+async function setWatched(files, watched, quiet) {
+  try {
+    await api('PUT', '/api/watched', { fileIds: files.map((f) => f.id), watched });
+    files.forEach((f) => (f.watched = watched));
+    if (!quiet) toast(watched ? `Marcado como visto` : 'Marcado como não visto');
+    if (location.hash.startsWith('#/filme/')) render();
+  } catch (err) { toast('Erro: ' + err.message); }
+}
+
+// ---------- Navegação ----------
+let pollTimer = null;
+let filter = { q: '', kind: '' };
+try { filter.kind = localStorage.getItem('filmes.kind') || ''; } catch {}
+
+async function render() {
+  clearTimeout(pollTimer);
+  stopPlayer();
+  const h = location.hash;
+  let m, tab = 'filmes';
+  try {
+    if (h === '#/baixar') { tab = 'baixar'; await renderDownloads(); }
+    else if ((m = h.match(/^#\/filme\/(\d+)$/))) await renderItem(Number(m[1]));
+    else if ((m = h.match(/^#\/assistir\/(\d+)\/(\d+)$/))) await renderPlayer(Number(m[1]), Number(m[2]));
+    else await renderLibrary();
+  } catch (e) {
+    content.innerHTML = `<p class="empty">Erro: ${esc(e.message)}</p>`;
+  }
+  document.querySelectorAll('nav a').forEach((a) => a.classList.toggle('on', a.dataset.tab === tab));
+  $('#upload-btn').hidden = tab !== 'filmes';
+}
+
+// ---------- Filmes ----------
+let items = [];
+
+async function renderLibrary() {
+  items = await api('GET', '/api/items');
+  if (!items.length) {
+    content.innerHTML = `<div class="toolbar"><h2>Filmes</h2></div>
+      <p class="empty">Nenhum filme ainda. Envie um vídeo pelo botão <b>Upload</b>, ou vá em
+      <a href="#/baixar">Baixar</a> e cole um link magnet: quando o download terminar, ele aparece aqui.</p>`;
+    return;
+  }
+  const opt = (v, label) => `<option value="${v}"${filter.kind === v ? ' selected' : ''}>${label}</option>`;
+  content.innerHTML = `<div class="toolbar"><h2 id="lib-title">Filmes</h2>
+      <input type="search" id="q" placeholder="Buscar" value="${esc(filter.q)}">
+      <select id="kind">${opt('', 'Tudo')}${opt('movie', 'Filmes')}${opt('series', 'Séries')}${opt('unseen', 'Não vistos')}</select>
+    </div><div class="cards" id="cards"></div>`;
+  $('#q').oninput = (e) => { filter.q = e.target.value; drawCards(); };
+  $('#kind').onchange = (e) => {
+    filter.kind = e.target.value;
+    try { localStorage.setItem('filmes.kind', filter.kind); } catch {}
+    drawCards();
+  };
+  drawCards();
+}
+
+function drawCards() {
+  const q = filter.q.trim().toLowerCase();
+  const list = items.filter((it) =>
+    (!q || it.title.toLowerCase().includes(q) || it.name.toLowerCase().includes(q)) &&
+    (filter.kind !== 'movie' || !it.series) && (filter.kind !== 'series' || it.series) &&
+    (filter.kind !== 'unseen' || it.watched < it.count));
+  const movies = list.filter((it) => !it.series).length, series = list.length - movies;
+  $('#lib-title').textContent = [movies && plural(movies, 'filme', 'filmes'), series && plural(series, 'série', 'séries')]
+    .filter(Boolean).join(' e ') || 'Filmes';
+  $('#cards').innerHTML = list.length ? list.map(cardHTML).join('') : '<p class="empty" style="grid-column:1/-1">Nada encontrado.</p>';
+}
+
+function cardHTML(it) {
+  const cover = it.hasThumb ? ` style="background-image:url(${thumbUrl(it)})"` : '';
+  let detail, badge = '';
+  if (it.series) {
+    detail = `Série · ${plural(it.count, 'episódio', 'episódios')}`;
+    if (it.watched) detail += ` · ${it.watched} ${it.watched === 1 ? 'visto' : 'vistos'}`;
+  } else {
+    detail = ['Filme', it.year, fmtDur(it.duration)].filter(Boolean).join(' · ');
+  }
+  if (it.watched && it.watched === it.count) badge = '<span class="badge">✓ Visto</span>';
+  else if (isNew(it)) badge = '<span class="badge new">Novo</span>';
+  const bar = it.series && it.watched && it.watched < it.count
+    ? `<span class="bar"><i style="width:${(100 * it.watched / it.count).toFixed(0)}%"></i></span>` : '';
+  return `<a class="card" href="#/filme/${it.id}"><div class="cover"${cover}>${it.hasThumb ? '' : '🎬'}${PLAY}${badge}${bar}</div>
+    <div class="info"><b title="${esc(it.title)}">${esc(it.title)}</b>${esc(detail)}</div></a>`;
+}
+
+// ---------- Um filme ou série ----------
+async function renderItem(id) {
+  const it = await api('GET', '/api/items/' + id);
+  const files = it.files;
+  const next = files.find((f) => !f.watched) || files[0];
+  const title = it.year ? `${it.title} (${it.year})` : it.title;
+  const cover = it.hasThumb ? ` style="background-image:url(${thumbUrl(it)})"` : '';
+  const facts = it.series
+    ? [plural(it.count, 'episódio', 'episódios'), `${it.watched} ${it.watched === 1 ? 'visto' : 'vistos'}`, fmtDur(it.duration), fmtBytes(it.size)]
+    : [fmtDur(it.duration), fmtBytes(it.size), files[0].watched ? '✓ Visto' : ''];
+  const pos = getPos(next);
+  let playLabel = pos ? `▶ Continuar de ${fmtClock(pos)}` : '▶ Assistir';
+  if (it.series) {
+    if (!it.watched) playLabel = `▶ Assistir ${epName(next)}`;
+    else if (next.watched) playLabel = `▶ Assistir de novo: ${epName(next)}`;
+    else playLabel = `▶ Continuar: ${epName(next)}`;
+    if (pos) playLabel = `▶ Continuar: ${epName(next)} (${fmtClock(pos)})`;
+  }
+
+  let html = `<div class="toolbar"><h2>${esc(title)}</h2>
+      <button class="ghost" id="it-rename">Renomear</button>
+      <button class="ghost" id="it-thumb">Outra capa</button>
+      <button class="danger" id="it-delete">Apagar</button></div>
+    <div class="hero"><div class="cover"${cover}>${it.hasThumb ? '' : '🎬'}</div><div>
+      <p class="meta">${esc(facts.filter(Boolean).join(' · '))}<br>${esc(it.name)}</p>
+      <div class="actions">
+        <button class="big" id="it-play">${esc(playLabel)}</button>
+        <button class="ghost" id="it-vlc">Abrir no VLC</button>
+        <button class="ghost" id="it-copy">Copiar link</button>
+        ${it.series ? '' : `<button class="ghost" id="it-seen">${files[0].watched ? 'Marcar como não visto' : 'Marcar como visto'}</button>`}
+      </div>
+      <p class="note" style="margin:0">Toca aqui mesmo no navegador. ${isAndroid || isIOS
+        ? '"Abrir no VLC" abre direto no app do VLC (instale pela loja de apps).'
+        : '"Abrir no VLC" baixa uma playlist .m3u: na primeira vez, escolha abrir com o VLC e marque para sempre abrir assim.' +
+          (it.series ? ' A playlist já inclui os episódios seguintes.' : '')}</p>
+    </div></div>`;
+
+  if (it.series) {
+    const seasons = new Map();
+    files.forEach((f) => {
+      if (!seasons.has(f.season)) seasons.set(f.season, []);
+      seasons.get(f.season).push(f);
+    });
+    for (const [s, list] of seasons) {
+      const all = list.every((f) => f.watched);
+      html += `<div class="toolbar" style="margin-top:20px"><h2>${s ? `Temporada ${s}` : seasons.size > 1 ? 'Outros' : 'Arquivos'} · ${plural(list.length, 'vídeo', 'vídeos')}</h2>
+        <button class="ghost" data-season="${s}" data-all="${all ? 1 : 0}">${all ? 'Desmarcar todos' : 'Marcar todos como vistos'}</button></div>
+        <ul class="eps">${list.map((f) => `<li class="${f.watched ? 'seen' : ''}" data-f="${f.id}">
+          <button class="seen-btn${f.watched ? ' on' : ''}" data-act="seen" title="${f.watched ? 'Visto' : 'Marcar como visto'}">✓</button>
+          <div class="t"><b title="${esc(baseName(f.rel))}">${esc(f.label)}</b><span>${esc([fmtDur(f.duration), fmtBytes(f.size)].filter(Boolean).join(' · '))}</span></div>
+          <button class="ghost" data-act="copy" title="Copiar link">Link</button>
+          <button class="ghost" data-act="vlc" title="Abrir no VLC">VLC</button>
+          <button data-act="play" title="Assistir">▶</button></li>`).join('')}</ul>`;
+    }
+  }
+  content.innerHTML = html;
+
+  const byId = (fid) => files.find((f) => f.id === fid);
+  const watch = (f) => (location.hash = `#/assistir/${it.id}/${f.id}`);
+  $('#it-play').onclick = () => watch(next);
+  $('#it-vlc').onclick = () => openVLC(it, next);
+  $('#it-copy').onclick = () => copyLink(next);
+  if (!it.series) $('#it-seen').onclick = () => setWatched(files, !files[0].watched);
+  content.querySelectorAll('[data-season]').forEach((b) => (b.onclick = () => {
+    const s = Number(b.dataset.season);
+    setWatched(files.filter((f) => f.season === s), b.dataset.all !== '1');
+  }));
+  content.querySelectorAll('.eps li').forEach((li) => (li.onclick = (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    const f = byId(Number(li.dataset.f));
+    if (b.dataset.act === 'play') watch(f);
+    else if (b.dataset.act === 'vlc') openVLC(it, f);
+    else if (b.dataset.act === 'copy') copyLink(f);
+    else if (b.dataset.act === 'seen') setWatched([f], !f.watched, true);
+  }));
+
+  $('#it-rename').onclick = async () => {
+    const t = prompt('Título (deixe vazio para voltar ao nome do arquivo):', it.title);
+    if (t === null) return;
+    try { await api('PATCH', '/api/items/' + id, { title: t }); render(); }
+    catch (err) { toast('Erro: ' + err.message); }
+  };
+  $('#it-thumb').onclick = async (e) => {
+    e.target.disabled = true;
+    try {
+      await api('POST', `/api/items/${id}/thumb`);
+      thumbBust[id] = Date.now();
+      render();
+    } catch (err) { toast('Erro: ' + err.message); e.target.disabled = false; }
+  };
+  $('#it-delete').onclick = async () => {
+    const what = it.series ? `a série "${it.title}" (${plural(it.count, 'episódio', 'episódios')})` : `o filme "${it.title}"`;
+    if (!confirm(`Apagar ${what}? Os arquivos serão excluídos do servidor (${fmtBytes(it.size)}) e o torrent sai do qBittorrent. Não dá para desfazer.`)) return;
+    try {
+      await api('DELETE', '/api/items/' + id);
+      toast('Apagado.');
+      location.hash = '#/';
+    } catch (err) { toast('Erro: ' + err.message); }
+  };
+}
+
+// ---------- Assistir no navegador ----------
+// Como no AList: o ArtPlayer na própria página. O que o navegador toca vai direto
+// por /stream. O resto (MKV, áudio AC3/E-AC3/DTS) vem do ffmpeg por /play, com o
+// vídeo copiado e só o áudio convertido; aí cada ponto do filme é um pedido novo
+// (/play?t=...), e o <video> é ajustado para mostrar o tempo do filme inteiro.
+let art = null;
+
+const posKey = (f) => 'filmes.pos.' + f.id;
+function getPos(f) {
+  try { return Number(localStorage.getItem(posKey(f))) || 0; } catch { return 0; }
+}
+function setPos(f, secs) {
+  try { secs ? localStorage.setItem(posKey(f), String(Math.floor(secs))) : localStorage.removeItem(posKey(f)); } catch {}
+}
+// fmtClock escreve "1:02:05" ou "12:05".
+function fmtClock(s) {
+  s = Math.floor(s);
+  const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, ss = String(s % 60).padStart(2, '0');
+  return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
+}
+
+const LANGS = { por: 'Português', eng: 'Inglês', spa: 'Espanhol', fre: 'Francês', fra: 'Francês', ger: 'Alemão',
+  deu: 'Alemão', ita: 'Italiano', jpn: 'Japonês', kor: 'Coreano', chi: 'Chinês', zho: 'Chinês', rus: 'Russo' };
+function trackName(t) {
+  let name = LANGS[t.lang] || t.title || t.lang || `Faixa ${t.index + 1}`;
+  if (/forced|forçad/i.test(t.title)) name += ' · forçada';
+  if (/\bsdh\b|\bcc\b|surdo/i.test(t.title)) name += ' · para surdos';
+  if (t.channels === 6) name += ' · 5.1';
+  else if (t.channels === 8) name += ' · 7.1';
+  return name;
+}
+
+const I18N = {
+  'Video Info': 'Informações do vídeo', Close: 'Fechar', 'Video Load Failed': 'Não deu para carregar o vídeo',
+  Volume: 'Volume', Play: 'Tocar', Pause: 'Pausar', Rate: 'Velocidade', Mute: 'Sem som', 'Video Flip': 'Espelhar',
+  Horizontal: 'Horizontal', Vertical: 'Vertical', Reconnect: 'Reconectando', 'Show Setting': 'Configurações',
+  'Hide Setting': 'Fechar configurações', Screenshot: 'Capturar quadro', 'Play Speed': 'Velocidade',
+  'Aspect Ratio': 'Proporção', Default: 'Padrão', Normal: 'Normal', Open: 'Abrir', 'Switch Video': 'Trocar',
+  'Switch Subtitle': 'Legenda', Fullscreen: 'Tela cheia', 'Exit Fullscreen': 'Sair da tela cheia',
+  'Web Fullscreen': 'Ocupar a janela', 'Exit Web Fullscreen': 'Voltar ao tamanho normal', 'Mini Player': 'Mini player',
+  'PIP Mode': 'Picture-in-picture', 'Exit PIP Mode': 'Sair do picture-in-picture',
+  'PIP Not Supported': 'Picture-in-picture não funciona neste navegador',
+  'Fullscreen Not Supported': 'Tela cheia não funciona neste navegador', 'Subtitle Offset': 'Atraso da legenda',
+  'Last Seen': 'Parou em', 'Jump Play': 'Continuar', AirPlay: 'AirPlay', 'AirPlay Not Available': 'AirPlay indisponível',
+};
+
+function stopPlayer() {
+  if (!art) return;
+  const v = art.video;
+  art.destroy();
+  art = null;
+  // Fecha a conexão do vídeo, para o ffmpeg do servidor parar.
+  v.removeAttribute('src');
+  v.load();
+}
+
+async function renderPlayer(itemId, fileId) {
+  const it = await api('GET', '/api/items/' + itemId);
+  const files = it.files, i = files.findIndex((f) => f.id === fileId);
+  if (i < 0) throw new Error('vídeo não encontrado');
+  const f = files[i], prev = files[i - 1], next = files[i + 1];
+  const title = it.series ? `${it.title} · ${epName(f)}` : it.year ? `${it.title} (${it.year})` : it.title;
+  content.innerHTML = `<div class="toolbar"><h2>${esc(title)}</h2>
+      <a class="btn ghost" href="#/filme/${it.id}">Voltar</a></div>
+    <div class="player" id="player"></div>
+    <div class="under">
+      ${it.series ? `<button class="ghost" id="pl-prev"${prev ? '' : ' disabled'}>‹ Anterior</button>
+        <button class="ghost" id="pl-next"${next ? '' : ' disabled'}>Próximo ›</button>` : ''}
+      <p class="note" id="pl-note"></p>
+    </div>
+    <div class="ext">Abrir em outro player:
+      ${extPlayers().map(([k, label]) => `<button class="ghost" data-ext="${k}">${label}</button>`).join('')}
+      <button class="ghost" data-ext="copy">Copiar link</button></div>`;
+  const go = (g) => (location.hash = `#/assistir/${it.id}/${g.id}`);
+  if (prev) $('#pl-prev').onclick = () => go(prev);
+  if (next) $('#pl-next').onclick = () => go(next);
+  content.querySelectorAll('[data-ext]').forEach((b) => (b.onclick = () =>
+    b.dataset.ext === 'copy' ? copyLink(f) : openExternal(b.dataset.ext, it, f)));
+
+  const info = await api('GET', `/api/files/${f.id}/media`);
+  if (location.hash !== `#/assistir/${itemId}/${fileId}`) return;
+  if (info.mode === 'vlc') {
+    $('#player').innerHTML = `<p class="empty">O navegador não toca este vídeo (formato ${esc(info.video || 'desconhecido')}),
+      e converter a imagem seria pesado demais para o servidor.<br>Use um dos players abaixo.</p>`;
+    return;
+  }
+  startPlayer(it, f, info, next, go);
+}
+
+function startPlayer(it, f, info, next, go) {
+  const remux = info.mode !== 'direct';
+  const dur = info.duration || f.duration || 0;
+  const pick = (list, ...tests) => tests.map((t) => list.find(t)).find(Boolean);
+  // Áudio: o português, se tiver. Legenda: a forçada do mesmo idioma (traduz só as
+  // falas em outra língua), se o arquivo marcar ela como padrão.
+  const a0 = pick(info.audio, (a) => a.lang === 'por' && a.default, (a) => a.lang === 'por', (a) => a.default, () => true);
+  let audio = a0 ? a0.index : -1;
+  let sub = info.subs.findIndex((s) => s.default && /forced|forçad/i.test(s.title) && (!a0 || s.lang === a0.lang));
+  if (sub < 0) sub = null;
+  let offset = 0; // remux: em que segundo do filme começa o vídeo que está tocando
+  let resume = getPos(f);
+  if (dur && resume > dur - 60) resume = 0;
+  if (remux) offset = resume;
+
+  const playUrl = (t) => `/play/${f.id}?t=${t.toFixed(1)}&a=${audio}`;
+  const subUrl = () => `/subs/${f.id}/${sub}.vtt` + (remux && offset ? `?shift=${offset.toFixed(2)}` : '');
+  const audioSel = info.audio.map((a) => ({ html: esc(trackName(a)), value: a.index, default: a.index === audio }));
+  const subSel = [{ html: 'Desligada', value: null, default: sub === null }]
+    .concat(info.subs.map((s, i) => ({ html: esc(trackName(s)), value: i, default: sub === i })));
+  const note = $('#pl-note');
+  note.textContent = remux ? 'O áudio deste vídeo é convertido na hora pelo servidor.' : '';
+
+  art = new Artplayer({
+    container: '#player',
+    url: remux ? playUrl(offset) : streamUrl(f),
+    poster: it.hasThumb ? thumbUrl(it) : '',
+    autoplay: true, setting: true, playbackRate: true, aspectRatio: true, pip: true, screenshot: true,
+    fullscreen: true, fullscreenWeb: true, hotkey: true, mutex: true, miniProgressBar: false, playsInline: true,
+    fastForward: true, lock: true, autoOrientation: true,
+    theme: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
+    lang: 'pt-br', i18n: { 'pt-br': I18N },
+    moreVideoAttr: { preload: 'auto' },
+    subtitle: {
+      type: 'vtt', escape: false, style: { fontSize: 'clamp(16px, 3.6vw, 34px)' },
+      // As legendas vêm dos torrents: deixa passar só itálico, negrito e sublinhado.
+      onVttLoad: (vtt) => vtt.replace(/<(?!\/?[ibu]>)[^>]*>/g, ''),
+    },
+    settings: [
+      remux && info.audio.length > 1 && {
+        html: 'Áudio', tooltip: esc(trackName(a0)), selector: audioSel,
+        onSelect(item) { audio = item.value; reload(art.currentTime); return item.html; },
+      },
+      info.subs.length && {
+        html: 'Legenda', tooltip: sub === null ? 'Desligada' : esc(trackName(info.subs[sub])), selector: subSel,
+        onSelect(item) { sub = item.value; showSub(); return item.html; },
+      },
+    ].filter(Boolean),
+    controls: next ? [{
+      name: 'next', position: 'left', index: 15, html: '<span style="font-size:20px;padding:0 6px">⏭</span>',
+      tooltip: `Próximo: ${epName(next)}`, click: () => go(next),
+    }] : [],
+  });
+
+  const v = art.video;
+  if (remux) {
+    // O ArtPlayer lê tempo e duração do <video>: aqui eles passam a contar do
+    // começo do filme, e mudar o tempo pede ao servidor o vídeo a partir dali.
+    const P = HTMLMediaElement.prototype;
+    const realTime = Object.getOwnPropertyDescriptor(P, 'currentTime');
+    const realBuf = Object.getOwnPropertyDescriptor(P, 'buffered');
+    const now = () => offset + realTime.get.call(v);
+    if (dur) Object.defineProperty(v, 'duration', { configurable: true, get: () => dur });
+    Object.defineProperty(v, 'buffered', { configurable: true, get() {
+      const b = realBuf.get.call(v);
+      return { length: b.length, start: (i) => offset + b.start(i), end: (i) => offset + b.end(i) };
+    } });
+    Object.defineProperty(v, 'currentTime', { configurable: true, get: now, set(t) {
+      t = Math.max(0, Math.min(Number(t) || 0, dur ? dur - 1 : Infinity));
+      if (Math.abs(t - now()) >= 1) reload(t);
+    } });
+  } else if (resume) {
+    art.once('ready', () => (art.seek = resume));
+  }
+
+  function reload(t) {
+    offset = t;
+    const playing = art.playing;
+    art.url = playUrl(t); // pelo ArtPlayer, para ele reconectar no ponto certo se a rede cair
+    if (playing) art.play().catch(() => {});
+    if (sub !== null) showSub();
+  }
+
+  async function showSub() {
+    if (sub === null) { art.subtitle.show = false; return; }
+    const want = sub, url = subUrl();
+    note.textContent = 'Preparando a legenda… (na primeira vez demora uns segundos)';
+    try {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(await r.text());
+      if (!art || want !== sub) return;
+      await art.subtitle.switch(url, { type: 'vtt' });
+      art.subtitle.show = true;
+      note.textContent = remux ? 'O áudio deste vídeo é convertido na hora pelo servidor.' : '';
+    } catch (err) {
+      note.textContent = 'Não deu para carregar a legenda: ' + err.message;
+    }
+  }
+  if (sub !== null) showSub();
+
+  // Guarda onde parou (para continuar depois) e marca como visto perto do fim.
+  let saved = 0, marked = f.watched;
+  art.on('video:timeupdate', () => {
+    const t = art.currentTime;
+    if (Math.abs(t - saved) >= 5) {
+      saved = t;
+      setPos(f, t > 30 && (!dur || t < dur - 60) ? t : 0);
+    }
+    if (!marked && dur && t > dur * 0.9) {
+      marked = true;
+      setWatched([f], true, true);
+    }
+  });
+  art.on('video:ended', () => {
+    setPos(f, 0);
+    if (next) go(next);
+  });
+  // Arquivo que parecia tocar direto e não tocou: tenta pelo ffmpeg.
+  if (!remux) art.once('video:error', () => {
+    if (!art) return;
+    stopPlayer();
+    startPlayer(it, f, { ...info, mode: 'remux' }, next, go);
+  });
+}
+
+// ---------- Baixar ----------
+const STATES = {
+  downloading: ['Baixando', ''], forcedDL: ['Baixando', ''],
+  metaDL: ['Buscando informações', 's-wait'], forcedMetaDL: ['Buscando informações', 's-wait'],
+  stalledDL: ['Procurando fontes', 's-warn'], queuedDL: ['Na fila', 's-wait'],
+  pausedDL: ['Pausado', 's-wait'], stoppedDL: ['Pausado', 's-wait'],
+  checkingDL: ['Verificando', 's-wait'], checkingUP: ['Verificando', 's-wait'], checkingResumeData: ['Verificando', 's-wait'],
+  allocating: ['Reservando espaço', 's-wait'], moving: ['Movendo', 's-wait'],
+  uploading: ['Pronto', 's-ok'], stalledUP: ['Pronto', 's-ok'], forcedUP: ['Pronto', 's-ok'], queuedUP: ['Pronto', 's-ok'],
+  pausedUP: ['Pronto', 's-ok'], stoppedUP: ['Pronto', 's-ok'],
+  error: ['Erro', 's-err'], missingFiles: ['Arquivos sumiram', 's-err'],
+};
+const isPaused = (t) => /^(paused|stopped)/.test(t.state);
+let torrents = [];
+
+async function renderDownloads() {
+  content.innerHTML = `<div class="toolbar"><h2>Baixar filme ou série</h2></div>
+    <div id="dl-alert"></div>
+    <div class="addbox">
+      <form id="add"><input type="text" id="link" placeholder="Cole aqui o link magnet ou de um arquivo .torrent" autocomplete="off">
+        <button id="add-btn">Baixar</button></form>
+      <div class="or">ou
+        <label class="btn ghost" for="tfile">Enviar arquivo .torrent</label>
+        <input type="file" id="tfile" accept=".torrent,application/x-bittorrent" hidden>
+        <span id="dl-where"></span></div>
+    </div>
+    <h2 id="dl-title">Downloads</h2>
+    <div class="dls" id="dls"></div>`;
+  $('#add').onsubmit = (e) => {
+    e.preventDefault();
+    const link = $('#link').value.trim();
+    if (!link) { $('#link').focus(); return; }
+    const fd = new FormData();
+    fd.append('link', link);
+    addTorrent(fd, () => ($('#link').value = ''));
+  };
+  $('#tfile').onchange = (e) => {
+    const f = e.target.files[0];
+    e.target.value = '';
+    if (!f) return;
+    const fd = new FormData();
+    fd.append('file', f);
+    addTorrent(fd);
+  };
+  $('#dls').onclick = onDownloadClick;
+  await pollDownloads();
+}
+
+async function addTorrent(fd, done) {
+  const btn = $('#add-btn');
+  btn.disabled = true;
+  try {
+    await api('POST', '/api/downloads', fd);
+    toast('Download iniciado. Quando terminar, aparece em Filmes.');
+    if (done) done();
+    await pollDownloads();
+  } catch (err) { toast('Erro: ' + err.message); }
+  btn.disabled = false;
+}
+
+async function pollDownloads() {
+  clearTimeout(pollTimer);
+  if (location.hash !== '#/baixar') return;
+  let data;
+  try { data = await api('GET', '/api/downloads'); }
+  catch (err) { data = { configured: true, error: err.message, torrents: [] }; }
+  if (location.hash !== '#/baixar' || !$('#dls')) return;
+  drawDownloads(data);
+  // Atualiza a cada 2 s com a aba visível; escondida, bem menos.
+  pollTimer = setTimeout(pollDownloads, document.hidden ? 30000 : 2000);
+}
+
+function drawDownloads(data) {
+  let alert = '';
+  if (!data.configured) alert = `<div class="alert">O qBittorrent não está configurado.
+    <span>Preencha QBIT_URL, QBIT_USER e QBIT_PASS no arquivo .env da app e reinicie com <code>docker compose up -d</code>.</span></div>`;
+  else if (data.error) alert = `<div class="alert">Não consegui falar com o qBittorrent.<span>${esc(data.error)}</span></div>`;
+  $('#dl-alert').innerHTML = alert;
+  $('#add-btn').disabled = !data.configured;
+  $('#dl-where').textContent = data.free ? `${fmtBytes(data.free)} livres no disco` : '';
+
+  torrents = data.torrents || [];
+  const active = torrents.filter((t) => t.progress < 1).length;
+  $('#dl-title').textContent = torrents.length
+    ? `Downloads · ${active ? `${active} em andamento` : 'todos prontos'}` : 'Downloads';
+  if (!torrents.length) {
+    $('#dls').innerHTML = data.configured && !data.error
+      ? '<p class="empty">Nenhum download. Cole um link acima para começar.</p>' : '';
+    return;
+  }
+  $('#dls').innerHTML = torrents.map((t) => {
+    const done = t.progress >= 1;
+    const [label, cls] = STATES[t.state] || [t.state, 's-wait'];
+    const pct = Math.floor(t.progress * 1000) / 10;
+    const facts = done
+      ? [fmtBytes(t.size), t.itemId ? '' : 'entrando no acervo…']
+      : [`${num(pct)}%`, t.size ? `${fmtBytes(t.downloaded)} de ${fmtBytes(t.size)}` : '',
+         t.dlspeed ? `↓ ${fmtBytes(t.dlspeed)}/s` : '', fmtEta(t.eta),
+         t.state === 'downloading' || t.state === 'stalledDL' ? plural(t.num_seeds, 'fonte', 'fontes') : ''];
+    const btns = done
+      ? `${t.itemId ? `<button data-act="open" data-id="${t.itemId}">▶ Assistir</button>` : ''}
+         <button class="ghost" data-act="forget">Tirar da lista</button>`
+      : `<button class="ghost" data-act="${isPaused(t) ? 'resume' : 'pause'}">${isPaused(t) ? 'Continuar' : 'Pausar'}</button>
+         <button class="danger" data-act="cancel">Cancelar</button>`;
+    return `<div class="dl${done ? ' done' : ''}${cls === 's-err' ? ' err' : ''}" data-hash="${t.hash}">
+      <div class="top"><b title="${esc(t.name)}">${esc(t.name)}</b><span class="st ${cls}">${esc(label)}</span></div>
+      <div class="prog"><i style="width:${done ? 100 : pct}%"></i></div>
+      <div class="sub">${esc(facts.filter(Boolean).join(' · '))}<span class="btns">${btns}</span></div></div>`;
+  }).join('');
+}
+
+async function onDownloadClick(e) {
+  const b = e.target.closest('button[data-act]');
+  if (!b) return;
+  const hash = b.closest('.dl').dataset.hash;
+  const t = torrents.find((x) => x.hash === hash);
+  try {
+    switch (b.dataset.act) {
+      case 'open': location.hash = '#/filme/' + b.dataset.id; return;
+      case 'pause': await api('POST', `/api/downloads/${hash}/pause`); break;
+      case 'resume': await api('POST', `/api/downloads/${hash}/resume`); break;
+      case 'forget':
+        if (!confirm(`Tirar "${t.name}" da lista? O filme continua em Filmes; o qBittorrent só para de compartilhar o arquivo.`)) return;
+        await api('DELETE', `/api/downloads/${hash}`);
+        toast('Tirado da lista.');
+        break;
+      case 'cancel':
+        if (!confirm(`Cancelar o download de "${t.name}"? O que já foi baixado (${fmtBytes(t.downloaded)}) será apagado.`)) return;
+        await api('DELETE', `/api/downloads/${hash}?files=1`);
+        toast('Download cancelado.');
+        break;
+    }
+  } catch (err) { toast('Erro: ' + err.message); }
+  pollDownloads();
+}
+
+// ---------- Uploads ----------
+// XMLHttpRequest em vez de fetch porque só ele informa o progresso do envio.
+let uploading = false;
+
+function uploadFile(file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/upload');
+    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
+    xhr.onload = () => (xhr.status < 300 ? resolve() : reject(new Error(xhr.responseText.trim() || xhr.statusText)));
+    xhr.onerror = () => reject(new Error('conexão perdida'));
+    const fd = new FormData();
+    fd.append('file', file);
+    xhr.send(fd);
+  });
+}
+
+$('#upload-input').onchange = async (e) => {
+  const files = [...e.target.files];
+  e.target.value = '';
+  if (!files.length || uploading) return;
+  const btn = $('#upload-btn');
+  uploading = true;
+  btn.classList.add('busy');
+  let ok = 0;
+  for (const [i, f] of files.entries()) {
+    const n = files.length > 1 ? ` ${i + 1}/${files.length}` : '';
+    try {
+      await uploadFile(f, (p) => (btn.firstChild.textContent = `Enviando${n} ${Math.floor(p * 100)}%`));
+      ok++;
+    } catch (err) { toast(`Erro ao enviar ${f.name}: ${err.message}`); }
+  }
+  uploading = false;
+  btn.classList.remove('busy');
+  btn.firstChild.textContent = 'Upload';
+  if (ok) {
+    toast(ok === 1 ? 'Vídeo enviado.' : `${ok} vídeos enviados.`);
+    if (location.hash === '' || location.hash === '#/') render();
+  }
+};
+window.addEventListener('beforeunload', (e) => { if (uploading) e.preventDefault(); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden && location.hash === '#/baixar') pollDownloads(); });
+window.addEventListener('hashchange', () => { render(); window.scrollTo(0, 0); });
+render();
+</script>
+</body>
+</html>

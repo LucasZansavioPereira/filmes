@@ -1,0 +1,48 @@
+services:
+  filmes:
+    build: .
+    container_name: filmes
+    restart: unless-stopped
+    ports:
+      # Porta no servidor: mude FILMES_PORT no .env se 8086 também estiver ocupada.
+      - "${FILMES_PORT:-8086}:8080"
+    environment:
+      - TZ=${TZ:-America/Sao_Paulo}
+      - QBIT_URL=${QBIT_URL:-}
+      - QBIT_USER=${QBIT_USER:-}
+      - QBIT_PASS=${QBIT_PASS:-}
+      # Pasta de filmes como o qBittorrent enxerga. Se ele roda direto no
+      # servidor (fora do Docker), é a mesma PASTA_FILMES.
+      - QBIT_PASTA=${QBIT_PASTA:-${PASTA_FILMES}}
+    volumes:
+      - ./data:/data
+      - ${PASTA_FILMES:?crie o arquivo .env com PASTA_FILMES (veja o README)}:/filmes
+    extra_hosts:
+      # Deixa a app achar o qBittorrent do próprio servidor em host.docker.internal.
+      - "host.docker.internal:host-gateway"
+    # Limita a app para não travar o resto do servidor.
+    mem_limit: 256m
+    cpus: 1.0
+
+  # qBittorrent junto com a app, para quem ainda não tem um. Só sobe com o
+  # perfil "qbittorrent" (o instalar.sh liga ele pelo COMPOSE_PROFILES do .env).
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: filmes-qbittorrent
+    profiles: ["qbittorrent"]
+    restart: unless-stopped
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-America/Sao_Paulo}
+      - WEBUI_PORT=8080
+      - TORRENTING_PORT=${QBIT_TORRENT_PORT:-6881}
+    volumes:
+      - ./qbittorrent:/config
+      # Mesmo caminho (/filmes) dos dois lados: aqui QBIT_PASTA=/filmes.
+      - ${PASTA_FILMES:?crie o arquivo .env com PASTA_FILMES (veja o README)}:/filmes
+    ports:
+      - "${QBIT_PORT:-8090}:8080"
+      - "${QBIT_TORRENT_PORT:-6881}:${QBIT_TORRENT_PORT:-6881}"
+      - "${QBIT_TORRENT_PORT:-6881}:${QBIT_TORRENT_PORT:-6881}/udp"
+    mem_limit: 512m
